@@ -1,6 +1,5 @@
 import express from "express";
 import session from "express-session";
-import pgSession from "connect-pg-simple";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import bcrypt from "bcrypt";
@@ -23,21 +22,20 @@ const defaultSettings={pageIntervalSeconds:10,backlightEnabled:true,dayBrightnes
   buzzerEnabled:true,pollIntervalSeconds:15,lowBatteryPercent:20,criticalBatteryPercent:10,pages:["time","shift","weather","nameday","battery","network","diagnostics"]};
 
 export function createApp({prisma,config}:{prisma:any;config:any}) {
-  const app=express(), PgStore=pgSession(session);
+  const app=express();
   const firmwareUpload=multer({storage:multer.memoryStorage(),limits:{fileSize:16*1024*1024},fileFilter:(_req,file,cb)=>cb(null,file.originalname.toLowerCase().endsWith(".bin"))});
   app.set("view engine","ejs"); app.set("views",path.resolve("src/views")); app.set("trust proxy",1);
   app.use(helmet({contentSecurityPolicy:{directives:{"script-src":["'self'"],"style-src":["'self'"]}}}));
   app.use(express.urlencoded({extended:false,limit:"100kb"})); app.use(express.json({limit:"100kb"}));
   app.use(express.static(path.resolve("src/public")));
-  app.use(session({store:new PgStore({conString:config.DATABASE_URL,createTableIfMissing:true,tableName:"Session"}),secret:config.SESSION_SECRET,resave:false,saveUninitialized:false,
+  app.use(session({secret:config.SESSION_SECRET,resave:false,saveUninitialized:false,
     cookie:{httpOnly:true,secure:config.NODE_ENV==="production",sameSite:"lax",maxAge:8*60*60*1000}}));
   app.locals.fmt=(d:Date|null)=>d?new Intl.DateTimeFormat("cs-CZ",{dateStyle:"short",timeStyle:"medium",timeZone:config.APP_TIMEZONE}).format(d):"—";
   app.use("/api/device/v1",rateLimit({windowMs:60_000,limit:180,standardHeaders:"draft-8",legacyHeaders:false}),deviceApi(prisma,config));
-  app.get("/health",async(_req,res)=>{try{await prisma.$queryRaw`SELECT 1`;res.json({status:"ok",database:"connected",version:"1.0.0",time:new Date().toISOString()});}
-    catch{res.status(503).json({status:"error",database:"disconnected",version:"1.0.0",time:new Date().toISOString()});}});
+  app.get("/health",(_req,res)=>res.json({status:"ok",storage:"memory",version:"1.0.0",time:new Date().toISOString()}));
   app.get("/login",(req,res)=>res.render("login",{error:null,csrf:csrfToken(req)}));
   app.post("/login",rateLimit({windowMs:15*60_000,limit:10}),csrf,async(req,res)=>{
-    const user=await prisma.user.findUnique({where:{email:String(req.body.email).toLowerCase()}});
+    const user=await prisma.user.findUnique({where:{username:String(req.body.username)}});
     if(!user||!(await bcrypt.compare(String(req.body.password),user.passwordHash)))return res.status(401).render("login",{error:"Neplatný e-mail nebo heslo.",csrf:csrfToken(req)});
     req.session.regenerate(()=>{req.session.userId=user.id;req.session.csrf=undefined;res.redirect("/");});
   });
@@ -78,7 +76,7 @@ export function createApp({prisma,config}:{prisma:any;config:any}) {
   app.post("/firmware",firmwareUpload.single("binary"),csrf,async(req,res)=>{
     if(!req.file)return res.status(400).send("Vyberte platný .bin soubor.");
     const sha256=createHash("sha256").update(req.file.buffer).digest("hex");
-    const release=await prisma.firmwareRelease.create({data:{version:String(req.body.version),notes:String(req.body.notes??""),fileName:req.file.originalname,fileUrl:"database",binary:req.file.buffer,sha256,active:false}});
+    const release=await prisma.firmwareRelease.create({data:{version:String(req.body.version),notes:String(req.body.notes??""),fileName:req.file.originalname,fileUrl:"memory",binary:req.file.buffer,sha256,active:false}});
     res.redirect("/firmware");
   });
   app.post("/firmware/:id/activate",csrf,async(req,res)=>{await prisma.$transaction([prisma.firmwareRelease.updateMany({data:{active:false}}),prisma.firmwareRelease.update({where:{id:req.params.id},data:{active:true}})]);res.redirect("/firmware");});

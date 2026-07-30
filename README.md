@@ -1,37 +1,36 @@
 # StaniceBox LCD
 
-Vzdálená česká administrace panelu Heltec WiFi LoRa 32 V4 s LCD 20×4. Aplikace nabízí tmavý mobilní dashboard, směny C → A → B, počasí Open‑Meteo, zprávy s LCD náhledem, verzované nastavení, vzdálené příkazy, události, telemetrii a bezpečně připravené OTA soubory. ESP32 navazuje pouze odchozí HTTPS spojení, takže funguje i za NAT.
+Vzdálená česká administrace panelu Heltec WiFi LoRa 32 V4 s LCD 20×4. Aplikace nevyžaduje databázi; provozní data drží pouze v paměti a po restartu služby se vymažou.
 
 ## První nasazení na Railway
 
 1. V Railway zvolte **New Project → Deploy from GitHub repo** a vyberte `martypetrzel-lab/STANICEBOXLCD`.
-2. Přidejte službu **PostgreSQL**. Railway vloží `DATABASE_URL`; pokud ne, připojte referenci `${{Postgres.DATABASE_URL}}`.
-3. V aplikaci nastavte všechny proměnné z `.env.example`. `SESSION_SECRET`, `ADMIN_PASSWORD` a `DEVICE_API_KEY` použijte dlouhé náhodné hodnoty (alespoň 16 znaků; heslo alespoň 10).
-4. Povinné jsou `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `DEVICE_ID`, `DEVICE_API_KEY`. Dále nastavte `APP_BASE_URL` na výslednou veřejnou HTTPS adresu. Souřadnice Mstětic jsou předvyplněné.
+2. Nepřidávejte PostgreSQL ani jinou databázi.
+3. Proměnné jsou volitelné; výchozí přihlášení je jméno `Hasici` a heslo `150150`.
+4. Pro ESP32 doporučujeme nastavit vlastní `DEVICE_API_KEY`. Dále nastavte `APP_BASE_URL` na výslednou veřejnou HTTPS adresu.
 5. V **Settings → Networking → Generate Domain** vytvořte veřejnou doménu.
-6. Deployment automaticky spustí Prisma migrace. Ověřte `https://DOMENA/health`; odpověď musí uvádět `status: ok` a `database: connected`.
-7. Otevřete doménu a přihlaste se přes `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+6. Ověřte `https://DOMENA/health`; odpověď musí uvádět `status: ok` a `storage: memory`.
+7. Otevřete doménu a přihlaste se jako `Hasici` s heslem `150150`.
 8. Do stávajícího ESP32 firmware doplňte základní URL a autentizační hlavičky dle [docs/ESP32_API.md](docs/ESP32_API.md). První `POST /status` zobrazí panel jako online.
 9. V **Zprávy → Nová zpráva** vytvořte zprávu; ESP32 ji získá z `GET /messages/next`.
 10. Po zobrazení musí firmware zavolat `delivered`, `displayed` a případně `acknowledged`. Stav se projeví v historii.
 
 ## Lokální vývoj
 
-Vyžaduje Node.js 20+ a PostgreSQL. Zkopírujte `.env.example` do `.env`, doplňte tajemství, nainstalujte balíčky, aplikujte migrace a spusťte vývojový server:
+Vyžaduje pouze Node.js 20+. Databáze není potřeba:
 
 ```bash
 npm install
-npx prisma migrate deploy
 npm run dev
 ```
 
-Kontroly: `npx prisma validate`, `npm run typecheck`, `npm test`, `npm run build`.
+Kontroly: `npm run typecheck`, `npm test`, `npm run build`.
 
 ## Proměnné prostředí
 
-`NODE_ENV`, `PORT`, `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `DEVICE_ID`, `DEVICE_API_KEY`, `DEVICE_OFFLINE_SECONDS`, `APP_TIMEZONE`, `LOCATION_NAME`, `LOCATION_LATITUDE`, `LOCATION_LONGITUDE`, `WEATHER_CACHE_MINUTES`, `STATUS_HISTORY_INTERVAL_SECONDS`, `APP_BASE_URL`.
+`NODE_ENV`, `PORT`, `SESSION_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `DEVICE_ID`, `DEVICE_API_KEY`, `DEVICE_OFFLINE_SECONDS`, `APP_TIMEZONE`, `LOCATION_NAME`, `LOCATION_LATITUDE`, `LOCATION_LONGITUDE`, `WEATHER_CACHE_MINUTES`, `STATUS_HISTORY_INTERVAL_SECONDS`, `APP_BASE_URL`.
 
-Skutečný `.env` se necommituje. Hesla a API klíče jsou uloženy jako bcrypt hash, cookies jsou HttpOnly/SameSite a v produkci Secure. Formuláře mají CSRF ochranu, vstupy jsou omezené a validované.
+Cookies jsou HttpOnly/SameSite a v produkci Secure. Formuláře mají CSRF ochranu, vstupy jsou omezené a validované.
 
 ## Struktura
 
@@ -39,7 +38,7 @@ Skutečný `.env` se necommituje. Hesla a API klíče jsou uloženy jako bcrypt 
 - `src/routes/device-api.ts` – kompletní pull API ESP32
 - `src/services` – směny, počasí, jmeniny a LCD převod
 - `src/views`, `src/public` – EJS rozhraní, responzivní CSS a JavaScript
-- `prisma/schema.prisma` – PostgreSQL modely a indexy
+- `src/store.ts` – dočasné úložiště dat v paměti procesu
 - `docs/ESP32_API.md` – integrační smlouva pro firmware
 - `tests` – automatické testy výpočtů a bezpečné konfigurace
 
