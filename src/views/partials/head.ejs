@@ -1,0 +1,5 @@
+<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07111f"><title>StaniceBox</title><link rel="stylesheet" href="/app.css"></head><body>
+<header class="top"><a class="brand" href="/"><span>SB</span> StaniceBox</a><button class="menu" aria-label="Otevřít menu">☰</button>
+<nav><a href="/" class="<%= path==='/'?'active':'' %>">Přehled</a><a href="/messages">Zprávy</a><a href="/statistics">Statistiky</a><a href="/settings">Nastavení panelu</a><a href="/device">Zařízení</a><a href="/events">Události</a><a href="/firmware">Firmware</a>
+<form action="/logout" method="post"><input type="hidden" name="_csrf" value="<%= csrf %>"><button>Odhlásit</button></form></nav></header><main>

@@ -1,0 +1,4 @@
+<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Přihlášení · StaniceBox</title><link rel="stylesheet" href="/app.css"></head>
+<body class="login"><form class="login-card" method="post"><div class="logo">SB</div><h1>StaniceBox</h1><p>Vzdálená správa informačního panelu</p>
+<% if(error){ %><div class="alert"><%= error %></div><% } %><input type="hidden" name="_csrf" value="<%= csrf %>"><label>E-mail<input type="email" name="email" autocomplete="username" required></label>
+<label>Heslo<input type="password" name="password" autocomplete="current-password" required></label><button class="primary">Přihlásit se</button></form></body></html>

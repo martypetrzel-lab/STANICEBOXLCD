@@ -1,0 +1,4 @@
+<%- include('partials/head') %><section class="pagehead"><div><p class="eyebrow">ROTACE C → A → B</p><h1>Statistiky směn</h1></div></section><div class="stats">
+<% for(const s of ['A','B','C']){ %><article class="card"><div class="card-title">Směna <%= s %></div><div class="value"><%= stats.counts[s] %></div><p class="muted">směn v tomto roce</p></article><% } %>
+<article class="card"><div class="card-title">Odslouženo</div><div class="value"><%= stats.completed %></div></article><article class="card"><div class="card-title">Zbývá</div><div class="value"><%= stats.remaining %></div></article></div>
+<article class="card"><div class="card-title">Nejbližších 30 dnů</div><div class="calendar"><% upcoming.forEach(d=>{ %><div><strong><%= d.shift %></strong><span><%= d.date %></span></div><% }) %></div></article><%- include('partials/foot') %>
