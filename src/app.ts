@@ -58,7 +58,7 @@ export function createApp({prisma,config}:{prisma:any;config:any}) {
   app.get("/messages/new",(_req,res)=>res.render("message-form",{message:null}));
   app.post("/messages",csrf,async(req,res)=>{const data=messageSchema.parse(req.body),d=await device();if(!d)return res.status(409).send("Zařízení neexistuje.");
     const lcdTitle=removeDiacritics(data.title),lcdBody=removeDiacritics(data.body),preview=wrapLcd(`${lcdTitle}\n${lcdBody}`);
-    await prisma.message.create({data:{deviceId:d.id,...data,lcdTitle,lcdBody,lcdLines:preview.lines,startsAt:data.startsAt?new Date(data.startsAt):new Date(),
+    await prisma.message.create({data:{deviceId:d.id,...data,status:"PENDING",lcdTitle,lcdBody,lcdLines:preview.lines,startsAt:data.startsAt?new Date(data.startsAt):new Date(),
       expiresAt:data.expiresAt?new Date(data.expiresAt):null,beepEnabled:!!data.beepEnabled,requireAcknowledgement:!!data.requireAcknowledgement}});
     res.redirect("/messages");});
   app.post("/messages/:id/cancel",csrf,async(req,res)=>{await prisma.message.update({where:{id:req.params.id},data:{status:"CANCELLED"}});res.redirect("/messages");});
@@ -67,9 +67,9 @@ export function createApp({prisma,config}:{prisma:any;config:any}) {
   app.get("/settings",async(_req,res)=>{const d=await device(),latest=d?await prisma.deviceConfiguration.findFirst({where:{deviceId:d.id},orderBy:{version:"desc"}}):null;res.render("settings",{configuration:latest,settings:latest?.settings??defaultSettings});});
   app.post("/settings",csrf,async(req,res)=>{const d=await device();if(!d)return res.status(409).send("Zařízení neexistuje.");const latest=await prisma.deviceConfiguration.findFirst({where:{deviceId:d.id},orderBy:{version:"desc"}});
     const settings={...defaultSettings,...req.body,pageIntervalSeconds:Number(req.body.pageIntervalSeconds),dayBrightness:Number(req.body.dayBrightness),nightBrightness:Number(req.body.nightBrightness),pollIntervalSeconds:Number(req.body.pollIntervalSeconds)};
-    await prisma.deviceConfiguration.create({data:{deviceId:d.id,version:(latest?.version??0)+1,settings}});res.redirect("/settings");});
+    await prisma.deviceConfiguration.create({data:{deviceId:d.id,version:(latest?.version??0)+1,status:"PENDING",settings}});res.redirect("/settings");});
   app.get("/device",async(_req,res)=>{const d=await device();const commands=d?await prisma.deviceCommand.findMany({where:{deviceId:d.id},orderBy:{createdAt:"desc"},take:30}):[];res.render("device",{device:d,commands,commandTypes});});
-  app.post("/device/commands",csrf,async(req,res)=>{if(!commandTypes.includes(req.body.type))return res.status(400).send("Neplatný příkaz.");const d=await device();await prisma.deviceCommand.create({data:{deviceId:d.id,type:req.body.type,expiresAt:new Date(Date.now()+3600_000)}});res.redirect("/device");});
+  app.post("/device/commands",csrf,async(req,res)=>{if(!commandTypes.includes(req.body.type))return res.status(400).send("Neplatný příkaz.");const d=await device();await prisma.deviceCommand.create({data:{deviceId:d.id,type:req.body.type,status:"QUEUED",expiresAt:new Date(Date.now()+3600_000)}});res.redirect("/device");});
   app.post("/device/commands/:id/cancel",csrf,async(req,res)=>{await prisma.deviceCommand.update({where:{id:req.params.id},data:{status:"CANCELLED"}});res.redirect("/device");});
   app.get("/events",async(_req,res)=>{const d=await device();res.render("events",{events:d?await prisma.deviceEvent.findMany({where:{deviceId:d.id},orderBy:{createdAt:"desc"},take:200}):[]});});
   app.get("/firmware",async(_req,res)=>res.render("firmware",{releases:await prisma.firmwareRelease.findMany({orderBy:{createdAt:"desc"}})}));
