@@ -13,6 +13,7 @@ import { getWeather } from "./services/weather.js";
 import { removeDiacritics, wrapLcd } from "./services/lcd.js";
 import { csrf, csrfToken, requireAdmin } from "./middleware/auth.js";
 import { deviceApi } from "./routes/device-api.js";
+import { calendarRoutes } from "./routes/calendar.js";
 
 const messageSchema=z.object({title:z.string().min(1).max(100),body:z.string().min(1).max(4000),priority:z.enum(["NORMAL","IMPORTANT","CRITICAL"]),
   displayMode:z.enum(["ROTATION","IMMEDIATE","STICKY","FULLSCREEN"]),durationSeconds:z.coerce.number().int().min(5).max(3600),
@@ -28,11 +29,13 @@ export function createApp({prisma,config}:{prisma:any;config:any}) {
   app.use(helmet({contentSecurityPolicy:{directives:{"script-src":["'self'"],"style-src":["'self'"]}}}));
   app.use(express.urlencoded({extended:false,limit:"100kb"})); app.use(express.json({limit:"100kb"}));
   app.use(express.static(path.resolve("src/public")));
+  app.use("/vendor/fullcalendar",express.static(path.resolve("node_modules/fullcalendar")));
   app.use(session({secret:config.SESSION_SECRET,resave:false,saveUninitialized:false,
     cookie:{httpOnly:true,secure:config.NODE_ENV==="production",sameSite:"lax",maxAge:8*60*60*1000}}));
   app.locals.fmt=(d:Date|null)=>d?new Intl.DateTimeFormat("cs-CZ",{dateStyle:"short",timeStyle:"medium",timeZone:config.APP_TIMEZONE}).format(d):"—";
+  app.locals.fmtInput=(d:Date|null)=>d?new Intl.DateTimeFormat("sv-SE",{timeZone:config.APP_TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(d).replace(" ","T"):"";
   app.use("/api/device/v1",rateLimit({windowMs:60_000,limit:180,standardHeaders:"draft-8",legacyHeaders:false}),deviceApi(prisma,config));
-  app.get("/health",(_req,res)=>res.json({status:"ok",storage:"memory",version:"1.0.0",time:new Date().toISOString()}));
+  app.get("/health",async(_req,res)=>{try{await prisma.$queryRaw`SELECT 1`;res.json({status:"ok",database:"connected",version:"1.1.0",time:new Date().toISOString()});}catch{res.status(503).json({status:"error",database:"disconnected",version:"1.1.0",time:new Date().toISOString()});}});
   app.get("/login",(req,res)=>res.render("login",{error:null,csrf:csrfToken(req)}));
   app.post("/login",rateLimit({windowMs:15*60_000,limit:10}),csrf,async(req,res)=>{
     const user=await prisma.user.findUnique({where:{username:String(req.body.username)}});
@@ -47,7 +50,14 @@ export function createApp({prisma,config}:{prisma:any;config:any}) {
     const d=await device(), now=new Date(), shift=shiftAt(now), weather=await getWeather(config.LOCATION_LATITUDE,config.LOCATION_LONGITUDE,config.WEATHER_CACHE_MINUTES);
     const online=!!d?.lastSeenAt&&now.getTime()-d.lastSeenAt.getTime()<config.DEVICE_OFFLINE_SECONDS*1000;
     const [lastMessage,lastEvent]=d?await Promise.all([prisma.message.findFirst({where:{deviceId:d.id},orderBy:{updatedAt:"desc"}}),prisma.deviceEvent.findFirst({where:{deviceId:d.id},orderBy:{createdAt:"desc"}})]):[null,null];
-    res.render("dashboard",{device:d,online,shift,weather,nameday:nameday(now),location:config.LOCATION_NAME,lastMessage,lastEvent});
+    const dayStart=new Date(now);dayStart.setHours(0,0,0,0);const dayEnd=new Date(dayStart.getTime()+86400000);
+    const [todayEvents,upcomingEvents,absences,pendingNotifications]=await Promise.all([
+      prisma.calendarEvent.findMany({where:{deletedAt:null,status:"ACTIVE",startAt:{lt:dayEnd},endAt:{gte:dayStart}},include:{person:true,shifts:true},orderBy:{startAt:"asc"}}),
+      prisma.calendarEvent.findMany({where:{deletedAt:null,status:"ACTIVE",startAt:{gte:now,lte:new Date(now.getTime()+7*86400000)}},include:{person:true,shifts:true},orderBy:{startAt:"asc"},take:8}),
+      prisma.calendarEvent.findMany({where:{deletedAt:null,status:"ACTIVE",eventType:{in:["VACATION","SICKNESS","TRAINING"]},startAt:{lte:now},endAt:{gte:now}},include:{person:true,shifts:true}}),
+      prisma.eventNotification.count({where:{status:{in:["WAITING","AVAILABLE"]}}})
+    ]);
+    res.render("dashboard",{device:d,online,shift,weather,nameday:nameday(now),location:config.LOCATION_NAME,lastMessage,lastEvent,todayEvents,upcomingEvents,absences,pendingNotifications});
   });
   app.get("/api/admin/dashboard",async(_req,res)=>{
     const d=await device(), now=new Date(); res.json({time:now.toISOString(),shift:shiftAt(now),device:d,online:!!d?.lastSeenAt&&now.getTime()-d.lastSeenAt.getTime()<config.DEVICE_OFFLINE_SECONDS*1000});
@@ -80,6 +90,7 @@ export function createApp({prisma,config}:{prisma:any;config:any}) {
     res.redirect("/firmware");
   });
   app.post("/firmware/:id/activate",csrf,async(req,res)=>{await prisma.$transaction([prisma.firmwareRelease.updateMany({data:{active:false}}),prisma.firmwareRelease.update({where:{id:req.params.id},data:{active:true}})]);res.redirect("/firmware");});
+  app.use(calendarRoutes(prisma,config));
   app.use((err:any,_req:any,res:any,_next:any)=>{console.error(err instanceof ZodError?"Validation error":err?.message);res.status(err instanceof ZodError?400:500).render("error",{message:err instanceof ZodError?"Zkontrolujte zadané údaje.":"Nastala neočekávaná chyba."});});
   return app;
 }

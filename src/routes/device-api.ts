@@ -93,5 +93,32 @@ export function deviceApi(prisma:any, config:any) {
     if(!f)return res.status(404).json({success:false,error:"FIRMWARE_NOT_FOUND"});
     res.set({"Content-Type":"application/octet-stream","Content-Disposition":`attachment; filename="${f.fileName}"`,"X-Firmware-SHA256":f.sha256}).send(f.binary);
   });
+  router.get("/calendar/notifications/next",async(_req,res)=>{
+    const now=new Date(),device=res.locals.device,currentShift=device.currentShift??shiftAt(now).shift;
+    await prisma.eventNotification.updateMany({where:{status:{in:["WAITING","AVAILABLE"]},expiresAt:{lte:now}},data:{status:"EXPIRED"}});
+    await prisma.eventNotification.updateMany({where:{status:"WAITING",scheduledAt:{lte:now}},data:{status:"AVAILABLE"}});
+    const notification=await prisma.eventNotification.findFirst({where:{deviceId:device.id,status:{in:["WAITING","AVAILABLE"]},scheduledAt:{lte:now},expiresAt:{gt:now},
+      event:{status:"ACTIVE",deletedAt:null,shifts:{some:{shift:{in:[currentShift,"ALL"]}}}}},include:{event:{include:{person:true,shifts:true}}},orderBy:{scheduledAt:"asc"}});
+    if(!notification)return res.json({success:true,notification:null,pollAfterSeconds:30});
+    res.json({success:true,notification:{id:notification.id,eventId:notification.eventId,type:notification.event.eventType,title:notification.title,body:notification.body,
+      person:notification.event.person?.displayName??null,targetShift:notification.event.shifts.map((s:any)=>s.shift).join(","),priority:notification.event.priority,
+      beepEnabled:notification.event.beepEnabled,requireAcknowledgement:notification.event.requireAcknowledgement,durationSeconds:notification.event.durationSeconds,
+      startsAt:notification.scheduledAt,expiresAt:notification.expiresAt,lcdLines:[notification.lcdLine1,notification.lcdLine2,notification.lcdLine3,notification.lcdLine4]},pollAfterSeconds:30});
+  });
+  const notificationActions:Record<string,{field:string,status:string}>={downloaded:{field:"downloadedAt",status:"DOWNLOADED"},displayed:{field:"displayedAt",status:"DISPLAYED"},acknowledged:{field:"acknowledgedAt",status:"ACKNOWLEDGED"},cleared:{field:"clearedAt",status:"COMPLETED"},failed:{field:"failedAt",status:"FAILED"}};
+  for(const [action,meta] of Object.entries(notificationActions))router.post(`/calendar/notifications/:id/${action}`,async(req,res)=>{
+    const device=res.locals.device,notification=await prisma.eventNotification.findFirst({where:{id:req.params.id,deviceId:device.id}});
+    if(!notification)return res.status(404).json({success:false,error:"NOTIFICATION_NOT_FOUND"});
+    const existing=await prisma.eventNotificationDelivery.findUnique({where:{notificationId_deviceId:{notificationId:notification.id,deviceId:device.id}}}),stamp=existing?.[meta.field]??new Date();
+    const delivery=await prisma.eventNotificationDelivery.upsert({where:{notificationId_deviceId:{notificationId:notification.id,deviceId:device.id}},
+      create:{notificationId:notification.id,deviceId:device.id,[meta.field]:stamp,errorMessage:req.body?.error},update:{[meta.field]:stamp,...(action==="failed"&&req.body?.error?{errorMessage:req.body.error}:{})}});
+    const rank:Record<string,number>={WAITING:0,AVAILABLE:1,DOWNLOADED:2,DISPLAYED:3,ACKNOWLEDGED:4,COMPLETED:5,FAILED:5,CANCELLED:9,EXPIRED:9};
+    if(rank[meta.status]>rank[notification.status]&&!["CANCELLED","EXPIRED"].includes(notification.status))await prisma.eventNotification.update({where:{id:notification.id},data:{status:meta.status}});
+    res.json({success:true,delivery});
+  });
+  router.get("/calendar/notifications/:id/status",async(req,res)=>{
+    const notification=await prisma.eventNotification.findFirst({where:{id:req.params.id,deviceId:res.locals.device.id},select:{id:true,status:true,updatedAt:true,expiresAt:true}});
+    res.json({success:true,notification});
+  });
   return router;
 }

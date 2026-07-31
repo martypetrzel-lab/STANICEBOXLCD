@@ -86,6 +86,22 @@ Vrátí aktivní verzi a zabezpečené `downloadUrl`, nebo `firmware: null`. Fir
 
 Vrací binární `application/octet-stream`; hlavička `X-Firmware-SHA256` obsahuje kontrolní hash. I stažení vyžaduje autentizační hlavičky.
 
+## Kalendářní upozornění
+
+### `GET /calendar/notifications/next`
+
+Vrací nejbližší platné upozornění pro aktuální směnu zařízení nebo směnu `ALL`. Objekt obsahuje `id`, `eventId`, `type`, `title`, `body`, `person`, `targetShift`, `priority`, `beepEnabled`, `requireAcknowledgement`, `durationSeconds`, `startsAt`, `expiresAt` a přesně čtyři `lcdLines` s maximálně 20 znaky. Když nic nečeká, vrátí `notification: null` a `pollAfterSeconds: 30`.
+
+Potvrzení jsou idempotentní:
+
+- `POST /calendar/notifications/:id/downloaded`
+- `POST /calendar/notifications/:id/displayed`
+- `POST /calendar/notifications/:id/acknowledged`
+- `POST /calendar/notifications/:id/cleared`
+- `POST /calendar/notifications/:id/failed` s volitelným `{"error":"popis"}`
+
+Stav ověří `GET /calendar/notifications/:id/status`. Firmware má kalendář kontrolovat přibližně po 30 sekundách a nedoručovat záznam ve stavu `CANCELLED`, `EXPIRED` nebo `COMPLETED`.
+
 ## Příklad
 
 ```bash

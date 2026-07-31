@@ -8,20 +8,23 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/src/server.js",
-    "deploy": "node dist/src/server.js",
+    "deploy": "prisma migrate deploy && node dist/src/server.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "bcrypt": "^6.0.0",
     "ejs": "^6.0.1",
     "express": "^5.1.0",
     "express-rate-limit": "^8.0.1",
     "express-session": "^1.18.2",
     "helmet": "^8.1.0",
+    "fullcalendar": "^6.1.19",
     "multer": "^2.0.2",
+    "prisma": "^6.19.3",
     "zod": "^4.0.10"
   },
   "devDependencies": {

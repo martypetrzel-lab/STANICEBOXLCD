@@ -1,0 +1,382 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Shift {
+  A
+  B
+  C
+  ALL
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  IMPORTANT
+  CRITICAL
+}
+
+enum DisplayMode {
+  ROTATION
+  IMMEDIATE
+  STICKY
+  FULLSCREEN
+}
+
+enum MessageStatus {
+  PENDING
+  DELIVERED
+  DISPLAYED
+  ACKNOWLEDGED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  ERROR
+}
+
+enum ConfigStatus {
+  PENDING
+  DOWNLOADED
+  APPLIED
+  FAILED
+}
+
+enum CommandStatus {
+  QUEUED
+  DOWNLOADED
+  EXECUTED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+enum Severity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum EventType {
+  VACATION
+  SICKNESS
+  TRAINING
+  SHIFT_CHANGE
+  MEETING
+  TECHNICAL_CHECK
+  SERVICE
+  INSPECTION
+  NOTE
+  OTHER
+}
+
+enum EventStatus {
+  ACTIVE
+  CANCELLED
+  COMPLETED
+}
+
+enum RecurrenceType {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum NotificationStatus {
+  WAITING
+  AVAILABLE
+  DOWNLOADED
+  DISPLAYED
+  ACKNOWLEDGED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Device {
+  id                     String                      @id @default(uuid()) @db.Uuid
+  deviceId               String                      @unique
+  name                   String
+  apiKeyHash             String
+  enabled                Boolean                     @default(true)
+  lastSeenAt             DateTime?
+  firmwareVersion        String?
+  localIp                String?
+  wifiSsid               String?
+  wifiRssi               Int?
+  batteryVoltage         Float?
+  batteryPercent         Int?
+  powerSource            String?
+  uptimeSeconds          Int?
+  freeHeap               Int?
+  currentShift           Shift?
+  currentScreen          String?
+  backlightOn            Boolean?
+  lastEvent              String?
+  lastError              String?
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  telemetry              TelemetrySample[]
+  messages               Message[]
+  deliveries             MessageDelivery[]
+  configurations         DeviceConfiguration[]
+  commands               DeviceCommand[]
+  events                 DeviceEvent[]
+  notifications          EventNotification[]
+  notificationDeliveries EventNotificationDelivery[]
+
+  @@index([lastSeenAt])
+}
+
+model TelemetrySample {
+  id        String   @id @default(uuid()) @db.Uuid
+  deviceId  String   @db.Uuid
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  data      Json
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, createdAt])
+}
+
+model Message {
+  id                     String            @id @default(uuid()) @db.Uuid
+  deviceId               String            @db.Uuid
+  device                 Device            @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  title                  String
+  body                   String
+  lcdTitle               String
+  lcdBody                String
+  lcdLines               Json?
+  priority               Priority          @default(NORMAL)
+  displayMode            DisplayMode       @default(ROTATION)
+  durationSeconds        Int               @default(30)
+  startsAt               DateTime          @default(now())
+  expiresAt              DateTime?
+  beepEnabled            Boolean           @default(false)
+  requireAcknowledgement Boolean           @default(false)
+  status                 MessageStatus     @default(PENDING)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  deliveries             MessageDelivery[]
+
+  @@index([deviceId, status, startsAt])
+}
+
+model MessageDelivery {
+  id             String    @id @default(uuid()) @db.Uuid
+  messageId      String    @db.Uuid
+  deviceId       String    @db.Uuid
+  message        Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  device         Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deliveredAt    DateTime?
+  displayedAt    DateTime?
+  acknowledgedAt DateTime?
+  clearedAt      DateTime?
+
+  @@unique([messageId, deviceId])
+}
+
+model DeviceConfiguration {
+  id           String       @id @default(uuid()) @db.Uuid
+  deviceId     String       @db.Uuid
+  device       Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  version      Int
+  settings     Json
+  status       ConfigStatus @default(PENDING)
+  downloadedAt DateTime?
+  appliedAt    DateTime?
+  failedAt     DateTime?
+  error        String?
+  createdAt    DateTime     @default(now())
+
+  @@unique([deviceId, version])
+}
+
+model DeviceCommand {
+  id           String        @id @default(uuid()) @db.Uuid
+  deviceId     String        @db.Uuid
+  device       Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  type         String
+  payload      Json?
+  status       CommandStatus @default(QUEUED)
+  expiresAt    DateTime?
+  downloadedAt DateTime?
+  executedAt   DateTime?
+  failedAt     DateTime?
+  error        String?
+  createdAt    DateTime      @default(now())
+
+  @@index([deviceId, status, createdAt])
+}
+
+model DeviceEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  deviceId  String   @db.Uuid
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  type      String
+  severity  Severity @default(INFO)
+  message   String
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, createdAt])
+}
+
+model FirmwareRelease {
+  id        String   @id @default(uuid()) @db.Uuid
+  version   String   @unique
+  notes     String?
+  fileName  String
+  fileUrl   String
+  binary    Bytes
+  sha256    String
+  active    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?
+  action     String
+  entityType String?
+  entityId   String?
+  data       Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
+
+model Person {
+  id             String          @id @default(uuid()) @db.Uuid
+  firstName      String
+  lastName       String
+  displayName    String
+  shift          Shift
+  email          String?
+  phone          String?
+  color          String          @default("#29c4df")
+  note           String?
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  calendarEvents CalendarEvent[]
+
+  @@index([shift])
+  @@index([active])
+}
+
+model CalendarEvent {
+  id                     String               @id @default(uuid()) @db.Uuid
+  title                  String
+  description            String?
+  internalNote           String?
+  eventType              EventType
+  startAt                DateTime
+  endAt                  DateTime
+  allDay                 Boolean              @default(false)
+  priority               Priority             @default(NORMAL)
+  status                 EventStatus          @default(ACTIVE)
+  color                  String               @default("#29c4df")
+  personId               String?              @db.Uuid
+  person                 Person?              @relation(fields: [personId], references: [id], onDelete: SetNull)
+  notifyEsp              Boolean              @default(false)
+  notifyBeforeMinutes    Int                  @default(1440)
+  notifyOnStartDay       Boolean              @default(false)
+  requireAcknowledgement Boolean              @default(false)
+  beepEnabled            Boolean              @default(false)
+  durationSeconds        Int                  @default(20)
+  recurrenceType         RecurrenceType       @default(NONE)
+  recurrenceInterval     Int                  @default(1)
+  recurrenceUntil        DateTime?
+  recurrenceCount        Int?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  deletedAt              DateTime?
+  shifts                 CalendarEventShift[]
+  notifications          EventNotification[]
+  auditLogs              EventAuditLog[]
+
+  @@index([startAt])
+  @@index([endAt])
+  @@index([eventType])
+  @@index([personId])
+  @@index([status])
+}
+
+model CalendarEventShift {
+  id      String        @id @default(uuid()) @db.Uuid
+  eventId String        @db.Uuid
+  event   CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  shift   Shift
+
+  @@unique([eventId, shift])
+}
+
+model EventNotification {
+  id               String                      @id @default(uuid()) @db.Uuid
+  eventId          String                      @db.Uuid
+  event            CalendarEvent               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  deviceId         String                      @db.Uuid
+  device           Device                      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  notificationType String
+  scheduledAt      DateTime
+  expiresAt        DateTime
+  status           NotificationStatus          @default(WAITING)
+  title            String
+  body             String
+  lcdLine1         String
+  lcdLine2         String
+  lcdLine3         String
+  lcdLine4         String
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  cancelledAt      DateTime?
+  deliveries       EventNotificationDelivery[]
+
+  @@index([deviceId, status, scheduledAt])
+}
+
+model EventNotificationDelivery {
+  id             String            @id @default(uuid()) @db.Uuid
+  notificationId String            @db.Uuid
+  deviceId       String            @db.Uuid
+  notification   EventNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  device         Device            @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  downloadedAt   DateTime?
+  displayedAt    DateTime?
+  acknowledgedAt DateTime?
+  clearedAt      DateTime?
+  failedAt       DateTime?
+  errorMessage   String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([notificationId, deviceId])
+}
+
+model EventAuditLog {
+  id        String         @id @default(uuid()) @db.Uuid
+  eventId   String?        @db.Uuid
+  event     CalendarEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  userId    String?
+  action    String
+  details   Json?
+  createdAt DateTime       @default(now())
+
+  @@index([eventId, createdAt])
+}
