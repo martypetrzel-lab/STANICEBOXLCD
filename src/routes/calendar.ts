@@ -35,6 +35,15 @@ export function calendarRoutes(prisma:any,config:any){
   router.put("/api/calendar/events/:id",csrf,async(req,res)=>{const input=eventSchema.partial().parse(req.body),shifts=input.shifts,{shifts:_s,...data}=input,device=await prisma.device.findUniqueOrThrow({where:{deviceId:config.DEVICE_ID}});
     const event=await prisma.$transaction(async(tx:any)=>{if(shifts){await tx.calendarEventShift.deleteMany({where:{eventId:req.params.id}});}return tx.calendarEvent.update({where:{id:req.params.id},data:{...data,...(shifts?{shifts:{create:shifts.map(shift=>({shift}))}}:{})},include:{shifts:true}});});
     await rebuildNotifications(prisma,event.id,device.id);await audit(req,"UPDATED",event.id,data);res.json(event);});
+  router.delete("/api/calendar/events",csrf,async(req,res)=>{const now=new Date();const result=await prisma.$transaction(async(tx:any)=>{
+    const events=await tx.calendarEvent.findMany({where:{deletedAt:null},select:{id:true}});
+    if(!events.length)return {count:0};
+    const eventIds=events.map((event:any)=>event.id);
+    await tx.eventNotification.updateMany({where:{eventId:{in:eventIds},status:{in:["WAITING","AVAILABLE"]}},data:{status:"CANCELLED",cancelledAt:now}});
+    const deleted=await tx.calendarEvent.updateMany({where:{id:{in:eventIds}},data:{deletedAt:now,status:"CANCELLED"}});
+    await tx.eventAuditLog.create({data:{userId:req.session.userId,action:"CALENDAR_CLEARED",details:{count:deleted.count}}});
+    return {count:deleted.count};
+  });res.json({success:true,deleted:result.count});});
   router.delete("/api/calendar/events/:id",csrf,async(req,res)=>{await prisma.calendarEvent.update({where:{id:req.params.id},data:{deletedAt:new Date(),status:"CANCELLED"}});await prisma.eventNotification.updateMany({where:{eventId:req.params.id,status:{in:["WAITING","AVAILABLE"]}},data:{status:"CANCELLED",cancelledAt:new Date()}});await audit(req,"DELETED",String(req.params.id));res.json({success:true});});
   router.post("/api/calendar/notifications/:id/repeat",csrf,async(req,res)=>{const old=await prisma.eventNotification.findUniqueOrThrow({where:{id:req.params.id}});const {id,createdAt,updatedAt,cancelledAt,...copy}=old;const notification=await prisma.eventNotification.create({data:{...copy,status:"AVAILABLE",scheduledAt:new Date()}});await audit(req,"NOTIFICATION_REPEATED",old.eventId,{notificationId:notification.id});res.status(201).json(notification);});
   router.get("/api/calendar/upcoming",async(_req,res)=>res.json(await prisma.calendarEvent.findMany({where:{deletedAt:null,status:"ACTIVE",startAt:{gte:new Date(),lte:new Date(Date.now()+7*86400000)}},include:{person:true,shifts:true},orderBy:{startAt:"asc"}})));

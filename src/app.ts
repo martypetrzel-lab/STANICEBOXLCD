@@ -26,7 +26,7 @@ export function createApp({prisma,config}:{prisma:any;config:any}) {
   const app=express();
   const firmwareUpload=multer({storage:multer.memoryStorage(),limits:{fileSize:16*1024*1024},fileFilter:(_req,file,cb)=>cb(null,file.originalname.toLowerCase().endsWith(".bin"))});
   app.set("view engine","ejs"); app.set("views",path.resolve("src/views")); app.set("trust proxy",1);
-  app.use(helmet({contentSecurityPolicy:{directives:{"script-src":["'self'"],"style-src":["'self'"]}}}));
+  app.use(helmet({contentSecurityPolicy:{directives:{"script-src":["'self'"],"style-src":["'self'","'unsafe-inline'"]}}}));
   app.use(express.urlencoded({extended:false,limit:"100kb"})); app.use(express.json({limit:"100kb"}));
   app.use(express.static(path.resolve("src/public")));
   app.use("/vendor/fullcalendar",express.static(path.resolve("node_modules/fullcalendar")));
@@ -82,6 +82,7 @@ export function createApp({prisma,config}:{prisma:any;config:any}) {
   app.post("/device/commands",csrf,async(req,res)=>{if(!commandTypes.includes(req.body.type))return res.status(400).send("Neplatný příkaz.");const d=await device();await prisma.deviceCommand.create({data:{deviceId:d.id,type:req.body.type,status:"QUEUED",expiresAt:new Date(Date.now()+3600_000)}});res.redirect("/device");});
   app.post("/device/commands/:id/cancel",csrf,async(req,res)=>{await prisma.deviceCommand.update({where:{id:req.params.id},data:{status:"CANCELLED"}});res.redirect("/device");});
   app.get("/events",async(_req,res)=>{const d=await device();res.render("events",{events:d?await prisma.deviceEvent.findMany({where:{deviceId:d.id},orderBy:{createdAt:"desc"},take:200}):[]});});
+  app.post("/events/delete-all",csrf,async(req,res)=>{const d=await device();if(d)await prisma.deviceEvent.deleteMany({where:{deviceId:d.id}});await prisma.auditLog.create({data:{userId:req.session.userId,action:"DEVICE_EVENTS_CLEARED",entityType:"Device",entityId:d?.id}});res.redirect("/events");});
   app.get("/firmware",async(_req,res)=>res.render("firmware",{releases:await prisma.firmwareRelease.findMany({orderBy:{createdAt:"desc"}})}));
   app.post("/firmware",firmwareUpload.single("binary"),csrf,async(req,res)=>{
     if(!req.file)return res.status(400).send("Vyberte platný .bin soubor.");

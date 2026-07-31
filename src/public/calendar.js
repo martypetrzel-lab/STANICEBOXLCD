@@ -10,4 +10,9 @@ if(calendarEl&&window.FullCalendar){
     eventClick:info=>location.href=`/calendar/events/${info.event.id}/edit`,eventDrop:update,eventResize:update});
   async function update(info){const r=await fetch(`/api/calendar/events/${info.event.id}`,{method:"PUT",headers:{"content-type":"application/json","x-csrf-token":csrfCalendar},body:JSON.stringify({startAt:info.event.start.toISOString(),endAt:(info.event.end??info.event.start).toISOString()})});if(!r.ok){info.revert();alert("Událost se nepodařilo přesunout.")}}
   calendar.render();filters.forEach(f=>document.querySelector(`#filter-${f}`)?.addEventListener("change",()=>calendar.refetchEvents()));
+  document.querySelector("#clear-calendar")?.addEventListener("click",async()=>{
+    if(!confirm("Opravdu vymazat všechny události z kalendáře? Tuto akci nelze vrátit zpět."))return;
+    const r=await fetch("/api/calendar/events",{method:"DELETE",headers:{"x-csrf-token":csrfCalendar}});
+    if(r.ok){calendar.refetchEvents();alert("Kalendář byl vymazán.");}else alert("Kalendář se nepodařilo vymazat.");
+  });
 }
