@@ -11,6 +11,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/src/views ./src/views
 COPY --from=build /app/src/public ./src/public
 CMD ["sh", "-c", "npm exec -- prisma migrate deploy && node dist/src/server.js"]
