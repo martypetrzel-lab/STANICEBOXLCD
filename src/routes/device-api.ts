@@ -6,7 +6,11 @@ import { shiftAt } from "../services/shift.js";
 const statusSchema = z.object({
   firmwareVersion:z.string().max(80), localIp:z.string().max(64).optional(), wifiSsid:z.string().max(100).optional(),
   wifiRssi:z.number().int().min(-120).max(0).optional(), batteryVoltage:z.number().min(0).max(20).optional(),
-  batteryPercent:z.number().int().min(0).max(100).optional(), powerSource:z.enum(["USB","BATTERY"]).optional(),
+  batteryPercent:z.number().int().min(0).max(100).optional(),
+  powerSource:z.preprocess(
+    (value) => typeof value === "string" && value.toUpperCase() === "BATERIE" ? "BATTERY" : value,
+    z.enum(["USB","BATTERY"])
+  ).optional(),
   uptimeSeconds:z.number().int().nonnegative().optional(), freeHeap:z.number().int().nonnegative().optional(),
   currentShift:z.enum(["A","B","C"]).optional(), currentScreen:z.string().max(80).optional(), backlightOn:z.boolean().optional(),
   lastEvent:z.string().max(500).nullable().optional(), lastError:z.string().max(500).nullable().optional()
